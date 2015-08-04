@@ -82,7 +82,7 @@ public class QNSim {
             sizeWriter.println(time + "," + q1.getSize() + "," + q2.getSize() + "," + q3.getSize());
             eventsCounter++;
         }
-        
+
         sizeWriter.close();
         ntwTraversalWrt.close();
         PrintWriter lossesWrt = new PrintWriter("losses.csv");
@@ -92,8 +92,8 @@ public class QNSim {
         lossesWrt.println("q3," + (q3.getLostPacketCounter() * 1.0 / q3.getVisitCounter()));
 
         lossesWrt.close();
-        long end=System.currentTimeMillis();
-        JOptionPane.showMessageDialog(null, eventsCounter + " events has been simulated in "+((end-start)/1000)+"seconds\nLook in the log files to observe related results");
+        long end = System.currentTimeMillis();
+        JOptionPane.showMessageDialog(null, eventsCounter + " events has been simulated in " + ((end - start) / 1000) + "seconds\nLook in the log files to observe related results");
     }
 
     private static boolean setLookAndFeel() {
