@@ -24,7 +24,7 @@ public class NTWqueue {
     Queue<Packet> buffer;
     ArrayList<Packet> servers;
     AbstractRealDistribution serviceTimeGenerator;
-    private PrintWriter waitTimeWriter, traversalTimeWriter, lossWriter;
+    private PrintWriter waitTimeWriter, traversalTimeWriter, lossWriter, arrivalWriter;
     int bufferSize;
     int numServer;
     String name;
@@ -43,9 +43,11 @@ public class NTWqueue {
             waitTimeWriter = new PrintWriter(name + "_waitTimes.csv");
             traversalTimeWriter = new PrintWriter(name + "_traversalTime.csv");
             lossWriter = new PrintWriter(name + "_losses.csv");
+            arrivalWriter=new PrintWriter(name+"_arrivals.csv");
             waitTimeWriter.println("PacketID,waitTime");
             traversalTimeWriter.println("PacketID,traversalTime");
             lossWriter.println("PacketID,lossTime");
+            arrivalWriter.println("ArrivalTime,PacketID");
         } catch (FileNotFoundException ex) {
             Logger.getLogger(NTWqueue.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -70,6 +72,7 @@ public class NTWqueue {
     public boolean enqueue(Packet p) {
 //        //System.out.println(QNSim.time + "\t" + name + ".enqueue(" + p.getPacketID() + ")");
         visitCounter++;
+        arrivalWriter.println(QNSim.time+","+p.getPacketID());
         //loss of customer
         if (this.isFull()) {
             //System.out.println(QNSim.time + "\tCoda " + name + "piena! Pacchetto ID=" + p.getPacketID() + "viene perso");
@@ -102,7 +105,7 @@ public class NTWqueue {
             buffer.add(p);
             p.setArrivalTime(QNSim.time);
         }
-
+        arrivalWriter.flush();
         return true;
     }
 
