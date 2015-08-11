@@ -13,13 +13,11 @@ public class Event implements Comparable<Event> {
 
     double scheduledTime;
     Packet packet;
-    int type=-1;
 
     public Event(double scheduledTime, Packet packet) {
 
         this.scheduledTime = scheduledTime;
         this.packet = packet;
-        this.type=0;
     }
 
     @Override
@@ -42,13 +40,7 @@ public class Event implements Comparable<Event> {
         return packet;
     }
 
-    public int getType() {
-        return type;
-    }
-
-    public void setType(int type) {
-        this.type = type;
-    }
+   
     
     
 
