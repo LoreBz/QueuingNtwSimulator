@@ -9,7 +9,6 @@ import java.io.FileNotFoundException;
 import java.io.PrintWriter;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JFrame;
@@ -21,31 +20,36 @@ import javax.swing.UnsupportedLookAndFeelException;
 import org.apache.commons.math3.distribution.ExponentialDistribution;
 import org.apache.commons.math3.distribution.UniformRealDistribution;
 import org.apache.commons.math3.distribution.WeibullDistribution;
+import org.apache.commons.math3.random.RandomGenerator;
+import org.apache.commons.math3.random.Well19937c;
 
 /**
  *
  * @author Lorenzo
  */
 public class QNSim {
-    
+
     public static EventQueue eventQueue = new EventQueue();
     public static double time = 0.0;
-    public static Random random = new Random(System.currentTimeMillis());
+    public static RandomGenerator rng = new Well19937c(System.currentTimeMillis());
     public static HashMap<String, NTWqueue> queues = new HashMap<>();
-    public static PrintWriter ntwTraversalWrt;
+    public static PrintWriter ntwTraversalWrt/*
+             * ,insideNTWtime
+             */;
+    public static long exitCounter = 0;
 
-    /**
-     * @param args the command line arguments
-     */
     public static void main(String[] args) throws FileNotFoundException {
         long start = System.currentTimeMillis();
         setLookAndFeel();
         PrintWriter sizeWriter = new PrintWriter("queues_lenght.csv");
+        PrintWriter snapSizeWriter = new PrintWriter("queues_PeriodicLenght.csv");
         ntwTraversalWrt = new PrintWriter("network_traversal_time.csv");
         sizeWriter.println("time,q1length,q2length,q3length");
-        NTWqueue q1 = new NTWqueue("q1", new UniformRealDistribution(1.0, 4.0), 2, 20);
-        NTWqueue q2 = new NTWqueue("q2", new ExponentialDistribution(1), 1, 50);
-        NTWqueue q3 = new NTWqueue("q3", new ExponentialDistribution(2), 1, 50);
+        ntwTraversalWrt.println("PacketID,time");
+        snapSizeWriter.println("time,q1length,q2length,q3length");
+        NTWqueue q1 = new NTWqueue("q1", new UniformRealDistribution(rng, 1.0, 4.0), 2, 20);
+        NTWqueue q2 = new NTWqueue("q2", new ExponentialDistribution(rng, 1), 1, 50);
+        NTWqueue q3 = new NTWqueue("q3", new ExponentialDistribution(rng, 2), 1, 50);
         WeibullDistribution extInput = new WeibullDistribution(0.6, 1.5);
         queues.put("q1", q1);
         queues.put("q2", q2);
@@ -54,67 +58,80 @@ public class QNSim {
         //first event
         Event firstEvent = new Event(extInput.sample(), new Packet(0, Def.externalInput, "q1"));
         eventQueue.push(firstEvent);
+        Event firstSnapShot = new Event(0.0, null);
+        firstSnapShot.setType(1);
+        eventQueue.push(firstSnapShot);
         MyFrame f = new MyFrame();
         JProgressBar jp = f.getjProgressBar1();
         jp.setMinimum(0);
         jp.setMaximum(1000000);
-        
+
         SwingWorker<Void, Double> sw = new SwingWorker<Void, Double>() {
             double deadline = 1000000.0;
             long customerTicket = 0;
             long eventsCounter = 0;
-            
+
             @Override
             protected Void doInBackground() throws Exception {
-                
+
                 while (time < deadline) {
                     Event e = eventQueue.pop();
-                    time = e.scheduledTime;
-                    Packet p = e.getPacket();
-                    //control sorgente
-                    switch (p.getSource()) {
-                        case Def.externalInput:
-                            p.setGenerationTime(time);
-                            q1.enqueue(p);
-                            //prossimo input dall'esterno
-                            customerTicket++;
-                            Event nextInputEvent = new Event(time + extInput.sample(), new Packet(customerTicket, Def.externalInput, "q1"));
-                            eventQueue.push(nextInputEvent);
-                            break;
-                        case "q1":
-                            q1.dequeue(p);
-                            break;
-                        case "q2":
-                            q2.dequeue(p);
-                            break;
-                        case "q3":
-                            q3.dequeue(p);
-                            break;
+                    if (e.getType() != 0) {
+                        //snapshot sizes
+                        time = e.getScheduledTime();
+                        snapSizeWriter.println(time + "," + q1.getSize() + "," + q2.getSize() + "," + q3.getSize());
+                        Event ne=new Event(time+1.0, null);
+                        ne.setType(1);
+                        eventQueue.push(ne);
+                    } else {
+                        time = e.scheduledTime;
+                        Packet p = e.getPacket();
+                        //control sorgente
+                        switch (p.getSource()) {
+                            case Def.externalInput:
+                                p.setGenerationTime(time);
+                                q1.enqueue(p);
+                                //prossimo input dall'esterno
+                                customerTicket++;
+                                Event nextInputEvent = new Event(time + extInput.sample(), new Packet(customerTicket, Def.externalInput, "q1"));
+                                eventQueue.push(nextInputEvent);
+                                break;
+                            case "q1":
+                                q1.dequeue(p);
+                                break;
+                            case "q2":
+                                q2.dequeue(p);
+                                break;
+                            case "q3":
+                                q3.dequeue(p);
+                                break;
+                        }
+                        //write stastics on appropriate file
+                        sizeWriter.println(time + "," + q1.getSize() + "," + q2.getSize() + "," + q3.getSize());
                     }
 
-                    //write stastics on appropriate file
-                    sizeWriter.println(time + "," + q1.getSize() + "," + q2.getSize() + "," + q3.getSize());
                     eventsCounter++;
-                    if (((int)time) % 10000 == 0) {
+                    if (((int) time) % 10000 == 0) {
                         publish(time);
-                        System.out.println("Time: "+time);
+                        System.out.println("Time: " + time);
                     }
                 }
                 return null;
             }
-            
+
             @Override
             protected void process(List<Double> chunks) {
                 Double progress = chunks.get(chunks.size() - 1);
                 jp.setValue((int) time);
-                
+
             }
-            
+
             @Override
             protected void done() {
                 long end = System.currentTimeMillis();
                 JOptionPane.showMessageDialog(null, eventsCounter + " events has been simulated in " + ((end - start) / 1000) + "seconds\nLook in the log files to observe related results");
                 sizeWriter.close();
+                snapSizeWriter.close();
                 ntwTraversalWrt.close();
                 PrintWriter lossesWrt = null;
                 try {
@@ -126,20 +143,25 @@ public class QNSim {
                 lossesWrt.println("q1," + (q1.getLostPacketCounter() * 1.0 / q1.getVisitCounter()));
                 lossesWrt.println("q2," + (q2.getLostPacketCounter() * 1.0 / q2.getVisitCounter()));
                 lossesWrt.println("q3," + (q3.getLostPacketCounter() * 1.0 / q3.getVisitCounter()));
-                
+
                 lossesWrt.close();
+                System.out.println("q1 visit: " + queues.get("q1").getVisitCounter());
+                System.out.println("q2 visit: " + queues.get("q2").getVisitCounter());
+                System.out.println("q3 visit: " + queues.get("q3").getVisitCounter());
+                System.out.println("NTW losses=" + (1 - (exitCounter * 1.0 / customerTicket)));
+
                 System.exit(0);
             }
-            
+
         };
         f.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         f.setLocationRelativeTo(null);
         f.setVisible(true);
-        
+
         sw.execute();
-        
+
     }
-    
+
     private static boolean setLookAndFeel() {
         String lookAndFeel = UIManager.getSystemLookAndFeelClassName();
         try {
@@ -163,5 +185,5 @@ public class QNSim {
         }
         return true;
     }
-    
+
 }

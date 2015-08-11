@@ -20,11 +20,10 @@ import org.apache.commons.math3.distribution.AbstractRealDistribution;
  */
 public class NTWqueue {
 
-    //ArrayList<Customer> waitQueue;
     Queue<Packet> buffer;
     ArrayList<Packet> servers;
     AbstractRealDistribution serviceTimeGenerator;
-    private PrintWriter waitTimeWriter, traversalTimeWriter, lossWriter, arrivalWriter;
+    private PrintWriter waitTimeWriter, traversalTimeWriter, lossWriter, arrivalWriter, departureWriter;
     int bufferSize;
     int numServer;
     String name;
@@ -43,11 +42,13 @@ public class NTWqueue {
             waitTimeWriter = new PrintWriter(name + "_waitTimes.csv");
             traversalTimeWriter = new PrintWriter(name + "_traversalTime.csv");
             lossWriter = new PrintWriter(name + "_losses.csv");
-            arrivalWriter=new PrintWriter(name+"_arrivals.csv");
+            arrivalWriter = new PrintWriter(name + "_arrivals.csv");
+            departureWriter = new PrintWriter(name + "_departures.csv");
             waitTimeWriter.println("PacketID,waitTime");
             traversalTimeWriter.println("PacketID,traversalTime");
             lossWriter.println("PacketID,lossTime");
             arrivalWriter.println("ArrivalTime,PacketID");
+            departureWriter.println("DepartureTime,PacketID");
         } catch (FileNotFoundException ex) {
             Logger.getLogger(NTWqueue.class.getName()).log(Level.SEVERE, null, ex);
         }
@@ -70,9 +71,11 @@ public class NTWqueue {
     }
 
     public boolean enqueue(Packet p) {
-//        //System.out.println(QNSim.time + "\t" + name + ".enqueue(" + p.getPacketID() + ")");
+        //System.out.println(QNSim.time + "\t" + name + ".enqueue(" + p.getPacketID() + ")");
         visitCounter++;
-        arrivalWriter.println(QNSim.time+","+p.getPacketID());
+        arrivalWriter.println(QNSim.time + "," + p.getPacketID());
+        arrivalWriter.flush();
+        p.setArrivalTime(QNSim.time);
         //loss of customer
         if (this.isFull()) {
             //System.out.println(QNSim.time + "\tCoda " + name + "piena! Pacchetto ID=" + p.getPacketID() + "viene perso");
@@ -83,19 +86,7 @@ public class NTWqueue {
 
         //cliente portato direttamente in servizio
         if (!serversFull()) {
-            //System.out.println(QNSim.time + "\tCoda " + name + " serve pacchetto ID="+p.getPacketID());
-            servers.add(p);
-            if (p.getArrivalTime() == 0.0) {
-                p.setArrivalTime(QNSim.time);
-            }
-            p.setStartServiceTime(QNSim.time);
-            //scheduling departure of packet
-            double serviceTime = this.serviceTimeGenerator.sample();
-            p.setSource(this.name);
-            p.setDest(getDestination());
-
-            Event nextE = new Event(QNSim.time + serviceTime, p);
-            QNSim.eventQueue.push(nextE);
+            bringToService(p);
             return true;
         }
 
@@ -103,14 +94,13 @@ public class NTWqueue {
         if (serversFull() && !bufferFull()) {
             //System.out.println(QNSim.time + "\tCoda " + name + " mette in attesa pacchetto ID="+p.getPacketID());
             buffer.add(p);
-            p.setArrivalTime(QNSim.time);
         }
-        arrivalWriter.flush();
+
         return true;
     }
 
     public boolean dequeue(Packet p) {
-//        //System.out.println(QNSim.time + "\t" + name + ".dequeue(" + p.getPacketID() + ")");
+        //System.out.println(QNSim.time + "\t" + name + ".dequeue(" + p.getPacketID() + ")");
         if (!this.servers.contains(p)) {
             //System.out.println("Errore, dequeue(c) ma c non è presente nei server!");
             return false;
@@ -118,20 +108,24 @@ public class NTWqueue {
         //rimuoviamo il cliente dai server e carichiamo il prossimo (se c'e')
         //System.out.println(QNSim.time + "\tCoda " + name + " invia pacchetto ID="+p.getPacketID()+ " a coda "+p.getDest());
         servers.remove(p);
+        departureWriter.println(QNSim.time + "," + p.getPacketID());
         if (!buffer.isEmpty()) {
             Packet toService = buffer.poll();
-            this.enqueue(toService);
+            bringToService(toService);
         }
         //mandiamo il pacchetto a destinazione
         if (p.getDest() == Def.output) {
-            QNSim.ntwTraversalWrt.println(p.getPacketID() + "," + (QNSim.time - p.generationTime));
+            QNSim.ntwTraversalWrt.println(p.getPacketID() + "," + (QNSim.time - p.getGenerationTime()));
+            //QNSim.insideNTWtime.println(p.getPacketID()+","+(QNSim.time - p.getGenerationTime()));
             waitTimeWriter.println(p.getPacketID() + "," + (p.getStartServiceTime() - p.getArrivalTime()));
             traversalTimeWriter.println(p.getPacketID() + "," + (QNSim.time - p.getArrivalTime()));
+            QNSim.exitCounter++;
             //System.out.println(QNSim.time + "\tPacket ID=" + p.getPacketID() + " exit the network after " + (QNSim.time - p.generationTime) + " time units");
         } else {
             waitTimeWriter.println(p.getPacketID() + "," + (p.getStartServiceTime() - p.getArrivalTime()));
             traversalTimeWriter.println(p.getPacketID() + "," + (QNSim.time - p.getArrivalTime()));
             p.resetTime();
+            //metti il pacchetto in coda a destinazione
             QNSim.queues.get(p.getDest()).enqueue(p);
         }
         waitTimeWriter.flush();
@@ -151,16 +145,16 @@ public class NTWqueue {
 
     private String getDestination() {
         String dest = "";
-        double x = QNSim.random.nextDouble();//double between 0.0 and 1.0
+        double x = QNSim.rng.nextDouble();//double between 0.0 and 1.0
         switch (this.name) {
             case "q1":
                 if (x <= 0.2) {
                     dest = "q2";
                 }
-                if (0.2 < x && x <= 0.4) {
+                if (0.8 <= x && x <= 1.0) {
                     dest = "q3";
                 }
-                if (x > 0.4) {
+                if (0.2 < x && x < 0.8) {
                     dest = Def.output;
                 }
                 break;
@@ -180,6 +174,19 @@ public class NTWqueue {
 
     public long getLostPacketCounter() {
         return lostPacketCounter;
+    }
+
+    private void bringToService(Packet p) {
+        //System.out.println(QNSim.time + "\tCoda " + name + " serve pacchetto ID="+p.getPacketID());
+        servers.add(p);
+        p.setStartServiceTime(QNSim.time);
+        //scheduling departure of packet
+        double serviceTime = this.serviceTimeGenerator.sample();
+        p.setSource(this.name);
+        p.setDest(getDestination());
+
+        Event nextE = new Event(QNSim.time + serviceTime, p);
+        QNSim.eventQueue.push(nextE);
     }
 
 }
