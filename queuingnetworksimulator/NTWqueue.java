@@ -1,8 +1,3 @@
-/*
- * To change this license header, choose License Headers in Project Properties.
- * To change this template file, choose Tools | Templates
- * and open the template in the editor.
- */
 package queuingnetworksimulator;
 
 import java.io.FileNotFoundException;
@@ -24,18 +19,18 @@ public class NTWqueue {
     ArrayList<Packet> servers;
     AbstractRealDistribution serviceTimeGenerator;
     private PrintWriter waitTimeWriter, traversalTimeWriter, lossWriter, arrivalWriter, departureWriter;
-    int bufferSize;
+    int maxSize;
     int numServer;
     String name;
     long visitCounter = 0;
     long lostPacketCounter = 0;
 
-    public NTWqueue(String name, AbstractRealDistribution serviceTimeGenerator, int numServer, int bufferSize) {
+    public NTWqueue(String name, AbstractRealDistribution serviceTimeGenerator, int numServer, int maxSize) {
 
         this.serviceTimeGenerator = serviceTimeGenerator;
         this.name = name;
         this.numServer = numServer;
-        this.bufferSize = bufferSize;
+        this.maxSize = maxSize;
         this.buffer = new LinkedList<>();
         this.servers = new ArrayList<>();
         try {
@@ -56,7 +51,7 @@ public class NTWqueue {
     }
 
     public boolean isFull() {
-        if (buffer.size() == bufferSize && servers.size() == numServer) {
+        if (buffer.size() == (maxSize - numServer) && servers.size() == numServer) {
             return true;
         }
         return false;
@@ -67,7 +62,7 @@ public class NTWqueue {
     }
 
     boolean bufferFull() {
-        return (buffer.size() == bufferSize);
+        return (buffer.size() == (maxSize - numServer));
     }
 
     public boolean enqueue(Packet p) {
@@ -84,13 +79,13 @@ public class NTWqueue {
             return false;
         }
 
-        //cliente portato direttamente in servizio
+        //packets brought to service
         if (!serversFull()) {
             bringToService(p);
             return true;
         }
 
-        //cliente messo in coda d'attesa
+        //packet put in the waiting buffer
         if (serversFull() && !bufferFull()) {
             //System.out.println(QNSim.time + "\tCoda " + name + " mette in attesa pacchetto ID="+p.getPacketID());
             buffer.add(p);
@@ -108,6 +103,9 @@ public class NTWqueue {
         //rimuoviamo il cliente dai server e carichiamo il prossimo (se c'e')
         //System.out.println(QNSim.time + "\tCoda " + name + " invia pacchetto ID="+p.getPacketID()+ " a coda "+p.getDest());
         servers.remove(p);
+        //log waiting & reponse time (and departure for troughput computation)
+        waitTimeWriter.println(p.getPacketID() + "," + (p.getStartServiceTime() - p.getArrivalTime()));
+        traversalTimeWriter.println(p.getPacketID() + "," + (QNSim.time - p.getArrivalTime()));
         departureWriter.println(QNSim.time + "," + p.getPacketID());
         if (!buffer.isEmpty()) {
             Packet toService = buffer.poll();
@@ -117,13 +115,9 @@ public class NTWqueue {
         if (p.getDest() == Def.output) {
             QNSim.ntwTraversalWrt.println(p.getPacketID() + "," + (QNSim.time - p.getGenerationTime()));
             //QNSim.insideNTWtime.println(p.getPacketID()+","+(QNSim.time - p.getGenerationTime()));
-            waitTimeWriter.println(p.getPacketID() + "," + (p.getStartServiceTime() - p.getArrivalTime()));
-            traversalTimeWriter.println(p.getPacketID() + "," + (QNSim.time - p.getArrivalTime()));
             QNSim.exitCounter++;
             //System.out.println(QNSim.time + "\tPacket ID=" + p.getPacketID() + " exit the network after " + (QNSim.time - p.generationTime) + " time units");
         } else {
-            waitTimeWriter.println(p.getPacketID() + "," + (p.getStartServiceTime() - p.getArrivalTime()));
-            traversalTimeWriter.println(p.getPacketID() + "," + (QNSim.time - p.getArrivalTime()));
             p.resetTime();
             //metti il pacchetto in coda a destinazione
             QNSim.queues.get(p.getDest()).enqueue(p);
@@ -187,6 +181,14 @@ public class NTWqueue {
 
         Event nextE = new Event(QNSim.time + serviceTime, p);
         QNSim.eventQueue.push(nextE);
+    }
+
+    public void closeOutStreams() {
+        waitTimeWriter.close();
+        traversalTimeWriter.close();
+        lossWriter.close();
+        arrivalWriter.close();
+        departureWriter.close();
     }
 
 }
