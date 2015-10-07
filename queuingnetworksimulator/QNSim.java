@@ -31,7 +31,7 @@ public class QNSim {
 
     public static EventQueue eventQueue = new EventQueue();
     public static double time = 0.0;
-    public static RandomGenerator rng = new Well19937c(System.currentTimeMillis());
+    public static RandomGenerator rng = new Well19937c(123456);
     public static HashMap<String, NTWqueue> queues = new HashMap<>();
     public static PrintWriter ntwTraversalWrt/*
              * ,insideNTWtime
@@ -39,16 +39,16 @@ public class QNSim {
     public static long exitCounter = 0;
 
     public static void main(String[] args) throws FileNotFoundException {
-        long start = System.currentTimeMillis();
+
         setLookAndFeel();
-        PrintWriter sizeWriter = new PrintWriter("queues_lenght.csv");
+        final PrintWriter sizeWriter = new PrintWriter("queues_lenght.csv");
         ntwTraversalWrt = new PrintWriter("network_traversal_time.csv");
         sizeWriter.println("time,q1length,q2length,q3length");
         ntwTraversalWrt.println("PacketID,time");
-        NTWqueue q1 = new NTWqueue("q1", new UniformRealDistribution(rng, 1.0, 4.0), 2, 20);
-        NTWqueue q2 = new NTWqueue("q2", new ExponentialDistribution(rng, 1), 1, 50);
-        NTWqueue q3 = new NTWqueue("q3", new ExponentialDistribution(rng, 2), 1, 50);
-        WeibullDistribution extInput = new WeibullDistribution(0.6, 1.5);
+        final NTWqueue q1 = new NTWqueue("q1", new UniformRealDistribution(rng, 1.0, 4.0), 2, 20);
+        final NTWqueue q2 = new NTWqueue("q2", new ExponentialDistribution(rng, 1), 1, 50);
+        final NTWqueue q3 = new NTWqueue("q3", new ExponentialDistribution(rng, 2), 1, 50);
+        final WeibullDistribution extInput = new WeibullDistribution(rng,0.6, 1.5);
         queues.put("q1", q1);
         queues.put("q2", q2);
         queues.put("q3", q3);
@@ -57,7 +57,7 @@ public class QNSim {
         Event firstEvent = new Event(extInput.sample(), new Packet(0, Def.externalInput, "q1"));
         eventQueue.push(firstEvent);
         MyFrame f = new MyFrame();
-        JProgressBar jp = f.getjProgressBar1();
+        final JProgressBar jp = f.getjProgressBar1();
         jp.setMinimum(0);
         jp.setMaximum(1000000);
 
@@ -65,10 +65,11 @@ public class QNSim {
             double deadline = 1000000.0;
             long customerTicket = 0;
             long eventsCounter = 0;
+            long start;
 
             @Override
             protected Void doInBackground() throws Exception {
-
+                start = System.currentTimeMillis();
                 while (time < deadline) {
                     Event e = eventQueue.pop();
                     time = e.scheduledTime;
